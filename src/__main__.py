@@ -3,7 +3,26 @@ from FileLoader import FileLoader
 from Parser import Prompt, FunctionCall
 from llm_sdk.llm_sdk import Small_LLM_Model
 import json
+import os
 from itertools import zip_longest
+
+
+def set_limited_tokens_for_args(functions_definition, target_name):
+    new_limited_tokens = []
+    list_params_names = [
+        param for f in functions_definition for param in f['parameters'].keys() if f['name'] == target_name]
+    for token in limited_tokens:
+        if token is None:
+            for i, param in enumerate(list_params_names):
+                new_limited_tokens += model.encode(
+                    f"\"{param}\":")[0].tolist()
+                new_limited_tokens.append(None)
+                if i != len(list_params_names) - 1:
+                    new_limited_tokens += model.encode(",")[0].tolist()
+        else:
+            new_limited_tokens.append(token)
+    print(new_limited_tokens)
+    return new_limited_tokens
 
 
 def get_masked_logits(logits, next_expected_tokens) -> list[float] | None:
@@ -14,6 +33,8 @@ def get_masked_logits(logits, next_expected_tokens) -> list[float] | None:
     elif isinstance(next_expected_tokens, list):
         masked_logits = [score if index in next_expected_tokens else float(
             '-inf') for index, score in enumerate(logits)]
+    elif next_expected_tokens is None:
+        masked_logits = logits
     else:
         masked_logits = None
     return masked_logits
@@ -33,12 +54,16 @@ def generate_token(vocabs, tokens, model,  limited_tokens):
         if i >= 3 and flag:
             if function_name in [f['name'] for f in functions_definition]:
                 i = limit_index_fn_name
-                print(function_name)
                 flag = False
                 continue
             else:
                 function_name += model.decode([max_token])
+
+        elif not flag:
+            limited_tokens = set_limited_tokens_for_args(
+                functions_definition, function_name)
         tokens.append(max_token)
+        os.system('cls' if os.name == 'nt' else 'clear')
         print(model.decode(tokens))
         i += 1
 
@@ -71,7 +96,7 @@ def get_limits_probabs(new_tokens, matrix_function_names):
 
 
 def constrained_decoding(functions, model) -> list:
-    format_json = '{"name":"<|im_start|>fn<|im_end|>","args": <|im_start|>args<|im_end|>}'
+    format_json = '{"name":"<|im_start|>fn<|im_end|>","args":{<|im_start|>args<|im_end|>}}'
     tensor_list_obj = model.encode(format_json)
     tokens = tensor_list_obj[0].tolist()
     index = 0
