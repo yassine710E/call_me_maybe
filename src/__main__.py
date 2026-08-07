@@ -14,7 +14,6 @@ def get_masked_logits(logits, next_expected_tokens) -> list[float] | None:
     elif isinstance(next_expected_tokens, list):
         masked_logits = [score if index in next_expected_tokens else float(
             '-inf') for index, score in enumerate(logits)]
-        print('hhhhhhhhhhhh',[item for item in masked_logits if item != float('-inf')])
     else:
         masked_logits = None
     return masked_logits
@@ -28,24 +27,19 @@ def generate_token(vocabs, tokens, model,  limited_tokens):
     while i < len(limited_tokens):
         logits = model.get_logits_from_input_ids(tokens)
         n_logits = get_masked_logits(logits, limited_tokens[i])
-        if function_name in [f['name'] for f in functions_definition] and not flag:
-            print(f'this is i in  next instruction {i}')
-            print(model.decode([limited_tokens[i]]), ':', limited_tokens[i])
-            break
         if n_logits is None:
             return
         max_token = max(vocabs.keys(), key=lambda x: n_logits[x])
-        tokens.append(max_token)
-        print(model.decode(tokens))
         if i >= 3 and flag:
             if function_name in [f['name'] for f in functions_definition]:
                 i = limit_index_fn_name
-                print(
-                    f'this is fn name  : {function_name} and limit index is {i}')
+                print(function_name)
                 flag = False
                 continue
             else:
                 function_name += model.decode([max_token])
+        tokens.append(max_token)
+        print(model.decode(tokens))
         i += 1
 
 
@@ -77,7 +71,7 @@ def get_limits_probabs(new_tokens, matrix_function_names):
 
 
 def constrained_decoding(functions, model) -> list:
-    format_json = '{"name":<|im_start|>fn<|im_end|>,"args": <|im_start|>args<|im_end|>}'
+    format_json = '{"name":"<|im_start|>fn<|im_end|>","args": <|im_start|>args<|im_end|>}'
     tensor_list_obj = model.encode(format_json)
     tokens = tensor_list_obj[0].tolist()
     index = 0
@@ -137,8 +131,6 @@ if __name__ == "__main__":
     system_prompt = build_sytem_prompt(functions_definition)
     vocabs_org = get_vocabs(model)
     vocabs = {v: k for k, v in vocabs_org.items()}
-    print(len(vocabs))
-    print()
     for prompt in prompts:
         sytem_prompt_for_each_prompt = system_prompt + \
             f"\nUser Prompt: {prompt}\nAnswer: "
@@ -148,4 +140,3 @@ if __name__ == "__main__":
         limited_tokens = constrained_decoding(
             functions_definition, model)
         generate_token(vocabs, tokens, model, limited_tokens)
-        break
