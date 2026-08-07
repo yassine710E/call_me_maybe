@@ -1,6 +1,5 @@
 from Parser import Parser
 from FileLoader import FileLoader
-from Parser import Prompt, FunctionCall
 from llm_sdk.llm_sdk import Small_LLM_Model
 import json
 import os
@@ -17,11 +16,10 @@ def set_limited_tokens_for_args(functions_definition, target_name):
                 new_limited_tokens += model.encode(
                     f"\"{param}\":")[0].tolist()
                 new_limited_tokens.append(None)
-                if i != len(list_params_names) - 1:
-                    new_limited_tokens += model.encode(",")[0].tolist()
+                # if i != len(list_params_names) - 1:
+                #     new_limited_tokens += model.encode(",")[0].tolist()
         else:
             new_limited_tokens.append(token)
-    print(new_limited_tokens)
     return new_limited_tokens
 
 
@@ -39,17 +37,23 @@ def get_masked_logits(logits, next_expected_tokens) -> list[float] | None:
         masked_logits = None
     return masked_logits
 
+#1335 or 2198 or 30975 or 3417
 
 def generate_token(vocabs, tokens, model,  limited_tokens):
     i = 0
     global limit_index_fn_name
     function_name = str()
     flag = True
+    auto_generation = False
     while i < len(limited_tokens):
         logits = model.get_logits_from_input_ids(tokens)
-        n_logits = get_masked_logits(logits, limited_tokens[i])
+        n_logits = get_masked_logits(logits, limited_tokens[i] if not auto_generation else None)
         if n_logits is None:
             return
+        
+        if n_logits == logits and not auto_generation:
+            auto_generation = True
+        
         max_token = max(vocabs.keys(), key=lambda x: n_logits[x])
         if i >= 3 and flag:
             if function_name in [f['name'] for f in functions_definition]:
@@ -65,7 +69,10 @@ def generate_token(vocabs, tokens, model,  limited_tokens):
         tokens.append(max_token)
         os.system('cls' if os.name == 'nt' else 'clear')
         print(model.decode(tokens))
-        i += 1
+        if not auto_generation:
+            i+=1
+        if max_token in [1335 , 2198] and auto_generation:
+            auto_generation = False
 
 
 def get_functions_data(functions, model):
@@ -165,3 +172,4 @@ if __name__ == "__main__":
         limited_tokens = constrained_decoding(
             functions_definition, model)
         generate_token(vocabs, tokens, model, limited_tokens)
+        # break
