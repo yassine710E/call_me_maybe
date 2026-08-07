@@ -3,50 +3,96 @@ from FileLoader import FileLoader
 from Parser import Prompt, FunctionCall
 from llm_sdk.llm_sdk import Small_LLM_Model
 import json
-import regex
 from itertools import zip_longest
 
 
-def constrained_decoding(functions: list[dict], logits: list[float], vocabs: dict[str:int]):
-    # stage 1 : guide of function name
-    pattern = r"(?i:'s|'t|'re|'ve|'m|'ll|'d)|[^\r\n\p{L}\p{N}]?\p{L}+|\p{N}| ?[^\s\p{L}\p{N}]+[\r\n]*|\s*[\r\n]+|\s+(?!\S)|\s+"
-    compiled_regex = regex.compile(pattern)
-    chunks_format = compiled_regex.findall('{"name":"<fn>","args":"<args>"}')
-    function_chunks = []
-    args_chunks = []
-    for f in functions:
-        chunks = compiled_regex.findall(f['name'])
-        args = [ch for name_arg in f['parameters'].keys()
-                for ch in compiled_regex.findall(name_arg)]
-        args_chunks.append(args)
-        function_chunks.append(chunks)
-    # this is parameters
-    transposed_tuples = list(zip_longest(*args_chunks, fillvalue=None))
-    output = list(map(list, transposed_tuples))
-    limit_args = [set([s for s in item if s is not None])
-                  for item in output]
-    # this is for function
-    transposed_tuples = list(zip_longest(*function_chunks, fillvalue=None))
-    output = list(map(list, transposed_tuples))
-    limit_functions = [set([s for s in item if s is not None])
-                       for item in output]
-    result = []
-    flag_arg = True
-    for chunk in chunks_format:
-        if "<" in chunk:
-            result.append(chunk.replace('<', ""))
-        elif ">" in chunk:
-            result.append(chunk.replace('>', ''))
-        elif chunk == "fn":
-            result += limit_functions
-        elif chunk == "args" and flag_arg:
-            result.append(chunk)
-            flag_arg = False
-        elif chunk == "args" and not flag_arg:
-            result += limit_args
+def get_masked_logits(logits, next_expected_tokens) -> list[float] | None:
+
+    if isinstance(next_expected_tokens, int):
+        masked_logits = [score if index == next_expected_tokens else float(
+            '-inf') for index, score in enumerate(logits)]
+    elif isinstance(next_expected_tokens, list):
+        masked_logits = [score if index in next_expected_tokens else float(
+            '-inf') for index, score in enumerate(logits)]
+        print('hhhhhhhhhhhh',[item for item in masked_logits if item != float('-inf')])
+    else:
+        masked_logits = None
+    return masked_logits
+
+
+def generate_token(vocabs, tokens, model,  limited_tokens):
+    i = 0
+    global limit_index_fn_name
+    function_name = str()
+    flag = True
+    while i < len(limited_tokens):
+        logits = model.get_logits_from_input_ids(tokens)
+        n_logits = get_masked_logits(logits, limited_tokens[i])
+        if function_name in [f['name'] for f in functions_definition] and not flag:
+            print(f'this is i in  next instruction {i}')
+            print(model.decode([limited_tokens[i]]), ':', limited_tokens[i])
+            break
+        if n_logits is None:
+            return
+        max_token = max(vocabs.keys(), key=lambda x: n_logits[x])
+        tokens.append(max_token)
+        print(model.decode(tokens))
+        if i >= 3 and flag:
+            if function_name in [f['name'] for f in functions_definition]:
+                i = limit_index_fn_name
+                print(
+                    f'this is fn name  : {function_name} and limit index is {i}')
+                flag = False
+                continue
+            else:
+                function_name += model.decode([max_token])
+        i += 1
+
+
+def get_functions_data(functions, model):
+    names_of_functions = [f['name'] for f in functions]
+    two_d_tokens = []
+    for f_name in names_of_functions:
+        tensor_list_obj = model.encode(f_name)
+        tokens = tensor_list_obj[0].tolist()
+        two_d_tokens.append(tokens)
+
+    # reverse matrix (rows -> columns and columns -> ros)
+    reversed_two_d_tokens = [list(set(item for item in t if item))
+                             for t in zip_longest(*two_d_tokens)]
+
+    return reversed_two_d_tokens
+
+
+def get_limits_probabs(new_tokens, matrix_function_names):
+    global limit_index_fn_name
+    returned_val = list()
+    for index, id in enumerate(new_tokens):
+        if id == None:
+            returned_val = new_tokens[:index] + \
+                matrix_function_names + new_tokens[index+1:]
+            limit_index_fn_name = index+len(matrix_function_names)
+            break
+    return returned_val
+
+
+def constrained_decoding(functions, model) -> list:
+    format_json = '{"name":<|im_start|>fn<|im_end|>,"args": <|im_start|>args<|im_end|>}'
+    tensor_list_obj = model.encode(format_json)
+    tokens = tensor_list_obj[0].tolist()
+    index = 0
+    new_tokens = list()
+    while index < len(tokens):
+        if tokens[index] == 151644:
+            new_tokens.append(None)
+            index += 3
         else:
-            result.append(chunk)
-    print(result)
+            new_tokens.append(tokens[index])
+            index += 1
+
+    matrix_function_names = get_functions_data(functions, model)
+    new_tokens = get_limits_probabs(new_tokens, matrix_function_names)
+    return new_tokens
 
 
 def get_vocabs(model: Small_LLM_Model):
@@ -91,18 +137,15 @@ if __name__ == "__main__":
     system_prompt = build_sytem_prompt(functions_definition)
     vocabs_org = get_vocabs(model)
     vocabs = {v: k for k, v in vocabs_org.items()}
+    print(len(vocabs))
+    print()
     for prompt in prompts:
         sytem_prompt_for_each_prompt = system_prompt + \
             f"\nUser Prompt: {prompt}\nAnswer: "
         tensor_2d_object = model.encode(sytem_prompt_for_each_prompt)
         tokens = tensor_2d_object[0].tolist()
-        stage_counter = 0
-
-        for i in range(0, 400):
-            logits = model.get_logits_from_input_ids(tokens)
-            constrained_decoding(functions_definition, logits, vocabs_org)
-            max_token = max(vocabs.keys(), key=lambda x: logits[x])
-            tokens.append(max_token)
-            print(model.decode(tokens))
-            # print(model.decode([max_token]))
+        limit_index_fn_name = 0
+        limited_tokens = constrained_decoding(
+            functions_definition, model)
+        generate_token(vocabs, tokens, model, limited_tokens)
         break
