@@ -6,6 +6,28 @@ import os
 from itertools import zip_longest
 
 
+def isValid(s: str) -> bool:
+    if not s:
+        return False
+    new_s = str()
+    for ch in s:
+        if ch in ['{', '}']:
+            new_s += ch
+
+    stack = []
+    mapping = {"}": "{"}
+
+    for char in new_s:
+        if char in mapping:
+            top_element = stack.pop() if stack else '#'
+            if mapping[char] != top_element:
+                return False
+        else:
+            stack.append(char)
+
+    return not stack
+
+
 def set_limited_tokens_for_args(functions_definition, target_name):
     new_limited_tokens = []
     list_params_names = [
@@ -16,8 +38,6 @@ def set_limited_tokens_for_args(functions_definition, target_name):
                 new_limited_tokens += model.encode(
                     f"\"{param}\":")[0].tolist()
                 new_limited_tokens.append(None)
-                # if i != len(list_params_names) - 1:
-                #     new_limited_tokens += model.encode(",")[0].tolist()
         else:
             new_limited_tokens.append(token)
     return new_limited_tokens
@@ -37,23 +57,24 @@ def get_masked_logits(logits, next_expected_tokens) -> list[float] | None:
         masked_logits = None
     return masked_logits
 
-#1335 or 2198 or 30975 or 3417
 
 def generate_token(vocabs, tokens, model,  limited_tokens):
     i = 0
     global limit_index_fn_name
     function_name = str()
     flag = True
+    answer = ""
     auto_generation = False
-    while i < len(limited_tokens):
+    while not isValid(answer):
         logits = model.get_logits_from_input_ids(tokens)
-        n_logits = get_masked_logits(logits, limited_tokens[i] if not auto_generation else None)
+        n_logits = get_masked_logits(
+            logits, limited_tokens[i] if not auto_generation and i < len(limited_tokens) else None)
         if n_logits is None:
             return
-        
+
         if n_logits == logits and not auto_generation:
             auto_generation = True
-        
+
         max_token = max(vocabs.keys(), key=lambda x: n_logits[x])
         if i >= 3 and flag:
             if function_name in [f['name'] for f in functions_definition]:
@@ -66,13 +87,15 @@ def generate_token(vocabs, tokens, model,  limited_tokens):
         elif not flag:
             limited_tokens = set_limited_tokens_for_args(
                 functions_definition, function_name)
+        answer += model.decode([max_token])
         tokens.append(max_token)
         os.system('cls' if os.name == 'nt' else 'clear')
         print(model.decode(tokens))
-        if not auto_generation:
-            i+=1
-        if max_token in [1335 , 2198] and auto_generation:
+        # if not auto_generation:
+        i += 1
+        if max_token in [1335, 2198] and auto_generation:
             auto_generation = False
+    return answer
 
 
 def get_functions_data(functions, model):
@@ -171,5 +194,7 @@ if __name__ == "__main__":
         limit_index_fn_name = 0
         limited_tokens = constrained_decoding(
             functions_definition, model)
-        generate_token(vocabs, tokens, model, limited_tokens)
-        # break
+        a = generate_token(vocabs, tokens, model, limited_tokens)
+        # print(prompt)
+        break
+        # print(a)
