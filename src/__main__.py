@@ -30,14 +30,17 @@ def isValid(s: str) -> bool:
 
 def set_limited_tokens_for_args(functions_definition, target_name):
     new_limited_tokens = []
-    list_params_names = [
-        param for f in functions_definition for param in f['parameters'].keys() if f['name'] == target_name]
+    list_params_names = {
+        name_param:t['type'] for f in functions_definition for name_param,t in f['parameters'].items() if f['name'] == target_name}
     for token in limited_tokens:
         if token is None:
-            for i, param in enumerate(list_params_names):
+            for  param,t in list_params_names.items():
                 new_limited_tokens += model.encode(
                     f"\"{param}\":")[0].tolist()
                 new_limited_tokens.append(None)
+                if t == "number":
+                    new_limited_tokens += [13,15]
+
         else:
             new_limited_tokens.append(token)
     return new_limited_tokens
@@ -88,6 +91,14 @@ def generate_token(vocabs, tokens, model,  limited_tokens):
             limited_tokens = set_limited_tokens_for_args(
                 functions_definition, function_name)
         answer += model.decode([max_token])
+        
+        if max_token in [1335, 2198] and auto_generation:
+            try:
+                int(model.decode(tokens[-1]))
+                tokens += [13,15]
+            except ValueError as e:
+                pass
+
         tokens.append(max_token)
         os.system('cls' if os.name == 'nt' else 'clear')
         print(model.decode(tokens))
@@ -206,7 +217,6 @@ if __name__ == "__main__":
             FunctionCall(**f)
         
 
-    
         model = Small_LLM_Model(p.model)
     
         system_prompt = build_sytem_prompt(functions_definition)

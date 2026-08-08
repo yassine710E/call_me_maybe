@@ -11,14 +11,15 @@ run:
 	uv run python -m src \
 		--functions_definition $(FUNCTIONS_DEF) \
 		--input $(INPUT) \
-		--output $(OUTPUT)
+		--output $(OUTPUT) \
+		--model  $(MODEL)
 
 debug:
 	uv run python -m pdb -m src \
 		--functions_definition $(FUNCTIONS_DEF) \
 		--input $(INPUT) \
 		--output $(OUTPUT)
-		--mode  $(MODEL)
+		--model  $(MODEL)
 
 clean:
 	find . -type d -name "__pycache__" -exec rm -rf {} +
