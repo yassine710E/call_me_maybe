@@ -30,4 +30,5 @@ class FileLoader:
                     FunctionCall(**line)
         except (ValidationError, ValueError) as e:
             print(e)
+            return None
         return data
