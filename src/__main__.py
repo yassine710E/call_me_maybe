@@ -1,10 +1,12 @@
-from Parser import Parser,Prompt,FunctionCall
+from Parser import Parser, Prompt, FunctionCall
 from FileLoader import FileLoader
 from llm_sdk.llm_sdk import Small_LLM_Model
 import json
 import os
 from itertools import zip_longest
 from functools import lru_cache
+import time
+
 
 def isValid(s: str) -> bool:
     if not s:
@@ -31,15 +33,15 @@ def isValid(s: str) -> bool:
 def set_limited_tokens_for_args(functions_definition, target_name):
     new_limited_tokens = []
     list_params_names = {
-        name_param:t['type'] for f in functions_definition for name_param,t in f['parameters'].items() if f['name'] == target_name}
+        name_param: t['type'] for f in functions_definition for name_param, t in f['parameters'].items() if f['name'] == target_name}
     for token in limited_tokens:
         if token is None:
-            for  param,t in list_params_names.items():
+            for param, t in list_params_names.items():
                 new_limited_tokens += model.encode(
                     f"\"{param}\":")[0].tolist()
                 new_limited_tokens.append(None)
                 if t == "number":
-                    new_limited_tokens += [13,15]
+                    new_limited_tokens += [13, 15]
 
         else:
             new_limited_tokens.append(token)
@@ -90,21 +92,30 @@ def generate_token(vocabs, tokens, model,  limited_tokens):
         elif not flag:
             limited_tokens = set_limited_tokens_for_args(
                 functions_definition, function_name)
-        answer += model.decode([max_token])
-        
-        if max_token in [1335, 2198] and auto_generation:
+
+        if max_token in [1335, 3417] and auto_generation and tokens:
+            is_point_exist = False
+            index = len(tokens)-1
+            while tokens[index] != 25:
+                if 13 == tokens[index]:
+                    is_point_exist = True
+                    break
+                index -= 1
+
             try:
-                int(model.decode(tokens[-1]))
-                tokens += [13,15]
+                if not is_point_exist:
+                    int(model.decode(tokens[-1]))
+                    tokens += [13, 15]
+                    answer += model.decode([13, 15])
             except ValueError as e:
                 pass
-
+        answer += model.decode([max_token])
         tokens.append(max_token)
         os.system('cls' if os.name == 'nt' else 'clear')
         print(model.decode(tokens))
         if not auto_generation:
             i += 1
-        if max_token in [1335, 2198] and auto_generation:
+        if max_token in [1335, 3417, 30975, 2198] and auto_generation:
             auto_generation = False
     return answer
 
@@ -119,14 +130,15 @@ def get_functions_data(functions, model):
     names_of_functions = [f['name'] for f in functions]
     two_d_tokens = []
     for f_name in names_of_functions:
-        tokens = list(encode_function_name(f_name))   
+        tokens = list(encode_function_name(f_name))
         two_d_tokens.append(tokens)
 
     # reverse matrix (rows -> columns and columns -> ros)
     reversed_two_d_tokens = [list(set(item for item in t if item))
-                              for t in zip_longest(*two_d_tokens)]
+                             for t in zip_longest(*two_d_tokens)]
 
     return reversed_two_d_tokens
+
 
 def get_limits_probabs(new_tokens, matrix_function_names):
     global limit_index_fn_name
@@ -138,6 +150,7 @@ def get_limits_probabs(new_tokens, matrix_function_names):
             limit_index_fn_name = index+len(matrix_function_names)
             break
     return returned_val
+
 
 def constrained_decoding(functions, model) -> list:
     format_json = '{"name":"<|im_start|>fn<|im_end|>","args":{<|im_start|>args<|im_end|>}}'
@@ -199,7 +212,7 @@ def build_sytem_prompt(functions):
 if __name__ == "__main__":
     try:
         parser = Parser()
-    
+
         # parsing args
         p = parser.action()
         f = FileLoader()
@@ -211,18 +224,18 @@ if __name__ == "__main__":
         if not functions_definition:
             exit()
 
-        for pr in prompts:        
+        for pr in prompts:
             Prompt(**pr)
         for f in functions_definition:
             FunctionCall(**f)
-        
 
         model = Small_LLM_Model(p.model)
-    
+
         system_prompt = build_sytem_prompt(functions_definition)
         vocabs_org = get_vocabs(model)
         vocabs = {v: k for k, v in vocabs_org.items()}
         output_data = list()
+        start = time.perf_counter()
         for prompt in prompts:
             sytem_prompt_for_each_prompt = system_prompt + \
                 f"\nUser Prompt: {prompt}\nAnswer: "
@@ -242,5 +255,7 @@ if __name__ == "__main__":
             pass
         with open(p.output, 'w') as file:
             json.dump(output_data, file, indent=4)
+        end = time.perf_counter()
+        print(f"Time: {(end - start)/60} minutes")
     except BaseException as e:
         print(e)
