@@ -12,8 +12,10 @@ class FileLoader:
                 data = json.load(file)
         except FileNotFoundError as e:
             print(e)
+            return None
         except json.JSONDecodeError as e:
             print(e)
+            return None
 
         # here i wanna parse the data input (using pydintic)
         try:

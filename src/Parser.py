@@ -1,18 +1,18 @@
-from pydantic import BaseModel
+from pydantic import BaseModel,Field
 import argparse
 
 
 class Prompt(BaseModel):
-    prompt: str
+    prompt: str = Field(min_length = 1)
 
 
 class ValueType(BaseModel):
-    type: str
+    type: str = Field(min_lenght = 1)
 
 
 class FunctionCall(BaseModel):
-    name: str
-    description: str
+    name: str= Field(min_lenght = 1)
+    description: str= Field(min_lenght = 1)
     parameters: dict[str, ValueType]
     returns: ValueType
 
@@ -30,5 +30,8 @@ class Parser:
         )
         self.parser.add_argument(
             '--output', type=str, help='output file', default='data/output/function_calls.json'
+        )
+        self.parser.add_argument(
+            '--model', type=str, help='model name', default='Qwen/Qwen3-0.6B'
         )
         return self.parser.parse_args()
