@@ -91,8 +91,8 @@ def generate_token(vocabs, tokens, model,  limited_tokens):
         tokens.append(max_token)
         os.system('cls' if os.name == 'nt' else 'clear')
         print(model.decode(tokens))
-        # if not auto_generation:
-        i += 1
+        if not auto_generation:
+            i += 1
         if max_token in [1335, 2198] and auto_generation:
             auto_generation = False
     return answer
@@ -154,9 +154,23 @@ def get_vocabs(model: Small_LLM_Model):
 
 def build_sytem_prompt(functions):
     lines = [
-        'STRICT SYTEM RULE: Use ONLY a matching function from the list below.',
-        "if NO function matches the user's intent (even if types match),set name: \"none\".",
-        "Never use an unrelated function for a different task.",
+        "STRICT SYSTEM RULE: You are a function-calling router. You NEVER answer the user directly.",
+        "",
+        "Task: choose exactly one function name from the list below that matches the user's intent,",
+        "and extract its arguments from the prompt.",
+        "",
+        "Rules:",
+        "1. If no function matches the user's intent, output {\"name\": \"none\", \"parameters\": {}}.",
+        "2. Never substitute a function for a different task, even if argument types match.",
+        "3. For parameters of type \"number\": ALWAYS include a decimal point in the value, even for",
+        "   whole numbers (write 3.0, not 3; write 1234567.89, not \"1234567.89\"). Never wrap a",
+        "   number in quotes.",
+        "4. For parameters of type \"string\": copy the exact substring from the user's prompt,",
+        "   character-for-character, including quotes, punctuation, casing, and backslashes.",
+        "   Do not paraphrase, reorder, or \"clean up\" the text in any way.",
+        "5. For parameters of type \"boolean\": output true or false (lowercase, unquoted).",
+        "6. Output ONLY a single JSON object with exactly two keys: \"name\" and \"parameters\".",
+        "   No prose, no explanation, no markdown, no trailing text.",
         "",
         "Available functions:",
     ]
@@ -173,7 +187,6 @@ if __name__ == "__main__":
 
     # parsing args
     p = parser.action()
-
     f = FileLoader()
     prompts = f.load_file_data(p.input, 'input')
     functions_definition = f.load_file_data(
@@ -183,9 +196,11 @@ if __name__ == "__main__":
         model = Small_LLM_Model()
     except OSError as e:
         print(e)
+
     system_prompt = build_sytem_prompt(functions_definition)
     vocabs_org = get_vocabs(model)
     vocabs = {v: k for k, v in vocabs_org.items()}
+    output_data = list()
     for prompt in prompts:
         sytem_prompt_for_each_prompt = system_prompt + \
             f"\nUser Prompt: {prompt}\nAnswer: "
@@ -195,6 +210,13 @@ if __name__ == "__main__":
         limited_tokens = constrained_decoding(
             functions_definition, model)
         a = generate_token(vocabs, tokens, model, limited_tokens)
-        # print(prompt)
-        break
-        # print(a)
+        a = a.replace('\\', '\\\\')
+        a = a.replace("args", "parameters")
+        output = prompt | json.loads(a)
+        output_data.append(output)
+    try:
+        os.makedirs("data/output")
+    except FileExistsError as e:
+        pass
+    with open(p.output, 'w') as file:
+        json.dump(output_data, file, indent=4)
