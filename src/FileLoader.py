@@ -1,11 +1,16 @@
 import json
+from typing import Any, Dict, List, Optional
 from Parser import Prompt, FunctionCall
 from pydantic import ValidationError
 
 
 class FileLoader:
+    """Utility class to handle loading and validating input JSON files."""
 
-    def load_file_data(self, file_name, type_file) -> list:
+    def load_file_data(
+        self, file_name: str, type_file: str
+    ) -> Optional[List[Dict[str, Any]]]:
+        """Load JSON file content and validate structure using Pydantic."""
         # read json prompts file
         try:
             with open(file_name, 'r') as file:
@@ -17,7 +22,7 @@ class FileLoader:
             print(e)
             return None
 
-        # here i wanna parse the data input (using pydintic)
+        # here i wanna parse the data input (using pydantic)
         try:
             if not data:
                 raise ValueError('no data exist')
