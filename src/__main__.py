@@ -92,14 +92,16 @@ def generate_token(vocabs, tokens, model,  limited_tokens):
         elif not flag:
             limited_tokens = set_limited_tokens_for_args(
                 functions_definition, function_name)
-
-        if max_token in [1335, 3417] and auto_generation and tokens:
+        if max_token in [1335, 11248] and auto_generation and tokens:
             is_point_exist = False
             index = len(tokens)-1
-            while tokens[index] != 25:
+            while tokens[index] != 25 and index >= 0:
                 if 13 == tokens[index]:
                     is_point_exist = True
                     break
+                if not model.decode([tokens[index]]).isdigit():
+                    break
+
                 index -= 1
 
             try:
@@ -115,7 +117,7 @@ def generate_token(vocabs, tokens, model,  limited_tokens):
         print(model.decode(tokens))
         if not auto_generation:
             i += 1
-        if max_token in [1335, 3417, 30975, 2198] and auto_generation:
+        if max_token in [1335, 11248, 2198, 95642] and auto_generation:
             auto_generation = False
     return answer
 
@@ -185,19 +187,6 @@ def build_sytem_prompt(functions):
         "",
         "Task: choose exactly one function name from the list below that matches the user's intent,",
         "and extract its arguments from the prompt.",
-        "",
-        "Rules:",
-        "1. If no function matches the user's intent, output {\"name\": \"none\", \"parameters\": {}}.",
-        "2. Never substitute a function for a different task, even if argument types match.",
-        "3. For parameters of type \"number\": ALWAYS include a decimal point in the value, even for",
-        "   whole numbers (write 3.0, not 3; write 1234567.89, not \"1234567.89\"). Never wrap a",
-        "   number in quotes.",
-        "4. For parameters of type \"string\": copy the exact substring from the user's prompt,",
-        "   character-for-character, including quotes, punctuation, casing, and backslashes.",
-        "   Do not paraphrase, reorder, or \"clean up\" the text in any way.",
-        "5. For parameters of type \"boolean\": output true or false (lowercase, unquoted).",
-        "6. Output ONLY a single JSON object with exactly two keys: \"name\" and \"parameters\".",
-        "   No prose, no explanation, no markdown, no trailing text.",
         "",
         "Available functions:",
     ]
